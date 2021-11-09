@@ -34,6 +34,15 @@ class CustomDataset(Dataset):
             img = self.transform(img)
             coords = torch.tensor(coords)
         return img, coords
+    def coord2binary(self, coords, img_size):
+        label2D = torch.zeros([img_size[0], img_size[1]])
+        for i in range(4):
+            x = round(coords[2*i])
+            y = round(coords[2*i+1])
+            label2D[x, y] = 1
+
+
+
     def __len__(self):
         return self.len
 def imshow(img):
@@ -157,10 +166,15 @@ def SetupTrain():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = DeepCharuco()
     model = model.to(device)
+    return model
 
 def train(model):
     running_losses = []
     epoch = 0
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = DeepCharuco()
+    model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.999))
     lambda2 = lambda epoch: 0.98 ** epoch
