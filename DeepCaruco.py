@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import LambdaLR
 import glob
 import os
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 import matplotlib.pyplot as plt
 import torchvision.models as models
 import pandas as pd
@@ -28,19 +28,37 @@ class CustomDataset(Dataset):
     def __getitem__(self, index):
         img_fn = self.files[index]
         img = Image.open(img_fn)
+        imgGray = ImageOps.grayscale(img)
         coords = self.csv.iloc[index, 1:]
+        label2D = self.coord2binary(coords, imgGray.size)
+        id2D = self.idto2D(coords, imgGray.size)
+
+
 
         if self.transform is not None:
-            img = self.transform(img)
-            coords = torch.tensor(coords)
-        return img, coords
+            imgGray = self.transform(imgGray)
+            # label2D =self.transform(label2D)  # already torch
+            # id2D =self.transform(id2D)
+
+        return imgGray, label2D, id2D
+
     def coord2binary(self, coords, img_size):
         label2D = torch.zeros([img_size[0], img_size[1]])
         for i in range(4):
             x = round(coords[2*i])
             y = round(coords[2*i+1])
             label2D[x, y] = 1
+        return label2D
 
+    def idto2D(self, coords, img_size):
+        id2D = torch.zeros([img_size[0]//8, img_size[1]//8, 5])
+        id2D[:, :, 0] = 1
+        for i in range(4):
+            x = round(coords[2*i]) // 8
+            y = round(coords[2*i+1]) // 8
+            id2D[x, y, i+1] = 1
+            id2D[x, y, 0] = 0
+        return id2D
 
 
     def __len__(self):
@@ -51,11 +69,39 @@ def imshow(img):
     plt.imshow(np.transpose(img, (1, 2, 0)))
     plt.show()
 
+def labels2Dto3D_flattened(labels, cell_size):
 
-trainset = CustomDataset(root='TrainImage/', transform=transforms.ToTensor())
-trainset_loader = DataLoader(trainset, batch_size=16, shuffle=True, num_workers=1)
-imgs, coords = iter(trainset_loader).next()
-imshow(torchvision.utils.make_grid(imgs, nrow=4))
+    batch_size, channel, H, W = labels.shape
+    Hc, Wc = H // cell_size, W // cell_size
+    space2depth = SpaceToDepth(8)
+    labels = space2depth(labels).cuda()
+    dustbin = torch.ones((batch_size, 1, Hc, Wc)).cuda()
+    # labels = torch.cat((labels*2, dustbin.view(batch_size, 1, Hc, Wc)), dim=1)  # why times 2
+    labels = torch.cat((labels, dustbin.view(batch_size, 1, Hc, Wc)), dim=1)
+
+    labels = torch.argmax(labels, dim=1)
+    return labels
+
+class SpaceToDepth(nn.Module):
+    def __init__(self, block_size):
+        super(SpaceToDepth, self).__init__()
+        self.block_size = block_size
+        self.block_size_sq = block_size*block_size
+
+    def forward(self, input):
+        output = input.permute(0, 2, 3, 1)
+        (batch_size, s_height, s_width, s_depth) = output.size()
+        d_depth = s_depth * self.block_size_sq
+        d_width = int(s_width / self.block_size)
+        d_height = int(s_height / self.block_size)
+        t_1 = output.split(self.block_size, 2)
+        stack = [t_t.reshape(batch_size, d_height, d_depth) for t_t in t_1]
+        output = torch.stack(stack, 1)
+        output = output.permute(0, 2, 1, 3)
+        output = output.permute(0, 3, 1, 2)
+        return output
+
+
 
 class DeepCharuco(nn.Module):
     def __init__(self):
@@ -64,7 +110,7 @@ class DeepCharuco(nn.Module):
         self.relu = torch.nn.ReLU(inplace=True)
         self.pool = torch.nn.MaxPool2d(kernel_size=2, stride=2, return_indices=True)
         self.unpool = torch.nn.MaxUnpool2d(kernel_size=2, stride=2)
-        c1, c2, c3, c4, c5, d1 = 64, 64, 128, 128, 256, 256
+        c1, c2, c3, c4, c5, d1 = 64, 64, 128, 128, 256, 5
 
         det_h = 65
         gn = 64
@@ -106,6 +152,8 @@ class DeepCharuco(nn.Module):
         self.bnDa = nn.GroupNorm(gn, c5) if useGn else nn.BatchNorm2d(c5)
         self.convDb = torch.nn.Conv2d(c5, d1, kernel_size=1, stride=1, padding=0)
         self.bnDb = nn.GroupNorm(gn, d1) if useGn else nn.BatchNorm2d(d1)
+
+
     def forward(self, x, subpixel=False):
         """ Forward pass that jointly computes unprocessed point and descriptor
         tensors.
@@ -168,9 +216,10 @@ def SetupTrain():
     model = model.to(device)
     return model
 
-def train(model):
+def train():
     running_losses = []
-    epoch = 0
+    epoch = 20
+    beta = 0.8
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = DeepCharuco()
@@ -179,27 +228,42 @@ def train(model):
     optimizer = optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.999))
     lambda2 = lambda epoch: 0.98 ** epoch
     scheduler = LambdaLR(optimizer, lr_lambda=lambda2)
-    loc_criterion = nn.CrossEntropyLoss()
-    id_criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss()
     model.train()
 
     interval = 100
     iteration = 0
-    loss = 0
+    loc_loss = 0
+    id_loss = 0
     for ep in range(epoch):
-        for batch_id, (data, target) in enumerate(trainset_loader):
-            data, target = data.to(device), target.to(device)
+        for batch_id, (input, target_label2D, target_id) in enumerate(trainset_loader):
+            input, target_label2D, target_id = input.to(device), target_label2D.to(device), target_id.to(device)
             optimizer.zero_grad()
-            output = model(data)
-            _, pred = torch.max(output, 1)
-            loss = criterion(output, target)
+            pred_loc = model(input)['semi']
+            pred_id = model(input)['desc']
+            print(pred_loc.shape, pred_id.shape)
+            target_loc = labels2Dto3D_flattened(target_label2D.unsqueeze(1), 8)
+            loc_loss = criterion(pred_loc, target_loc.type(torch.int64))
+            id_loss = criterion(pred_id, target_id.type(torch.int64))
+
+            loss = loc_loss + beta * id_loss
             loss.backward()
             optimizer.step()
             if iteration % interval == 0:
                 print("Train epoch {}  [{}/{}] {:.0f}%]\tLoss: {:.6f}".format(
-                    ep, batch_id*len(data), len(trainset_loader.dataset),
+                    ep, batch_id*len(target_label2D), len(trainset_loader.dataset),
                     100 * batch_id / len(trainset_loader), loss.item()))
             iteration += 1
-        test(model, testset_loader, device)
         scheduler.step()
-    save_checkpoint('Model_dict/resnet152.pth', model, optimizer)
+    # save_checkpoint('Model_dict/resnet152.pth', model, optimizer)
+
+
+if __name__ == "__main__":
+    trainset = CustomDataset(root='TrainImage/', transform=transforms.ToTensor())
+    trainset_loader = DataLoader(trainset, batch_size=16, shuffle=True, num_workers=1)
+    imgs, coords, id = iter(trainset_loader).next()
+
+    # imshow(torchvision.utils.make_grid(imgs, nrow=4))
+    target_loc = labels2Dto3D_flattened(coords.unsqueeze(1), 8)
+    print(target_loc.shape)
+    train()
