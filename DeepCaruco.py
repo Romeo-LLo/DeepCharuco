@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import torchvision.models as models
 import pandas as pd
 import tqdm
+import cv2
 
 class CustomDataset(Dataset):
     def __init__(self, root, transform=None):
@@ -43,7 +44,7 @@ class CustomDataset(Dataset):
         return imgGray, label2D, id2D
 
     def coord2binary(self, coords, img_size):
-        label2D = torch.zeros([img_size[0], img_size[1]])
+        label2D = torch.zeros([img_size[1], img_size[0]])
         for i in range(4):
             x = round(coords[2*i])
             y = round(coords[2*i+1])
@@ -51,13 +52,11 @@ class CustomDataset(Dataset):
         return label2D
 
     def idto2D(self, coords, img_size):
-        id2D = torch.zeros([img_size[0]//8, img_size[1]//8, 5])
-        id2D[:, :, 0] = 1
+        id2D = torch.zeros([img_size[1]//8, img_size[0]//8])  # 0 stands for no id
         for i in range(4):
             x = round(coords[2*i]) // 8
             y = round(coords[2*i+1]) // 8
-            id2D[x, y, i+1] = 1
-            id2D[x, y, 0] = 0
+            id2D[x, y] = i+1
         return id2D
 
 
@@ -216,9 +215,18 @@ def SetupTrain():
     model = model.to(device)
     return model
 
+def save_checkpoint(checkpoint_path, model, optimizer):
+    torch.save({
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }, checkpoint_path)
+    print("Model saved")
+
+
+
 def train():
     running_losses = []
-    epoch = 20
+    epoch = 40
     beta = 0.8
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -231,17 +239,18 @@ def train():
     criterion = nn.CrossEntropyLoss()
     model.train()
 
-    interval = 100
-    iteration = 0
+    interval = 5
     loc_loss = 0
     id_loss = 0
     for ep in range(epoch):
+        iteration = 0
         for batch_id, (input, target_label2D, target_id) in enumerate(trainset_loader):
             input, target_label2D, target_id = input.to(device), target_label2D.to(device), target_id.to(device)
             optimizer.zero_grad()
             pred_loc = model(input)['semi']
             pred_id = model(input)['desc']
-            print(pred_loc.shape, pred_id.shape)
+            print(pred_loc.shape)
+            print(pred_id.shape)
             target_loc = labels2Dto3D_flattened(target_label2D.unsqueeze(1), 8)
             loc_loss = criterion(pred_loc, target_loc.type(torch.int64))
             id_loss = criterion(pred_id, target_id.type(torch.int64))
@@ -255,15 +264,63 @@ def train():
                     100 * batch_id / len(trainset_loader), loss.item()))
             iteration += 1
         scheduler.step()
-    # save_checkpoint('Model_dict/resnet152.pth', model, optimizer)
+    # save_checkpoint('Model_dict/1st_version.pth', model, optimizer)
+
+def test():
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = DeepCharuco()
+    model = model.to(device)
+    optimizer = optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.999))
+    checkpoint = torch.load('Model_dict/1st_version.pth')
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    model.eval()
+
+
+    # cap = cv2.VideoCapture(0)
+    #
+    # while (True):
+    #     ret, frame = cap.read()
+    #     frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).to(device)
+    #     out_loc = model(frame_gray)['semi']
+    #     out_id = model(frame_gray)['desc']
+    #
+    #     pred_loc = torch.max(out_loc, dim=1)
+
+    showimg = cv2.imread('TrainImage/2.jpg')
+
+    img = Image.open('TrainImage/1.jpg')
+    imgGray = ImageOps.grayscale(img)
+    transform = transforms.ToTensor()
+    imgGray = transform(imgGray).unsqueeze(0).to(device)
+
+    out_loc = model(imgGray)['semi']
+    out_id = model(imgGray)['desc']
+
+    pred_loc = torch.argmax(out_loc, dim=1)
+    pred_id = torch.max(out_id, dim=1)[1].cpu().numpy()
+    for h in range(60):
+        for w in range(80):
+            y = h * 8
+            x = w * 8
+            index = pred_id[0, h, w]
+            showimg = cv2.putText(showimg, str(index), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 1, cv2.LINE_AA)
+
+    cv2.imshow('id img', showimg)
+
+
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+
+
+
 
 
 if __name__ == "__main__":
     trainset = CustomDataset(root='TrainImage/', transform=transforms.ToTensor())
     trainset_loader = DataLoader(trainset, batch_size=16, shuffle=True, num_workers=1)
     imgs, coords, id = iter(trainset_loader).next()
-
-    # imshow(torchvision.utils.make_grid(imgs, nrow=4))
-    target_loc = labels2Dto3D_flattened(coords.unsqueeze(1), 8)
-    print(target_loc.shape)
-    train()
+    # # imshow(torchvision.utils.make_grid(imgs, nrow=4))
+    # train()
+    test()

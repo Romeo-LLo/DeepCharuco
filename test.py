@@ -16,9 +16,9 @@ import pandas as pd
 import tqdm
 
 #
-# img = Image.open('TrainImage/1.jpg')
-# imgGray = ImageOps.grayscale(img)
-# print(imgGray.size)
+img = Image.open('TrainImage/1.jpg')
+imgGray = ImageOps.grayscale(img)
+print(imgGray.size)
 #
 # csv = pd.read_csv('output.csv')
 # coords = csv.iloc[0, 1:]
