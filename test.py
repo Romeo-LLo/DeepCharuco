@@ -14,21 +14,26 @@ import matplotlib.pyplot as plt
 import torchvision.models as models
 import pandas as pd
 
-#
-img = Image.open('TrainImage/1.jpg')
-imgGray = ImageOps.grayscale(img)
-print(imgGray.size)
-#
+# #
+# img = Image.open('TrainImage/0001.jpg')
+# imgGray = ImageOps.grayscale(img)
+# print(imgGray.size)
+# #
 # csv = pd.read_csv('output.csv')
-# coords = csv.iloc[0, 1:]
-# print(coords.shape)
-# label2D = torch.zeros([640, 480])
-#
+# coords = csv.iloc[1, 1:]
+# print(type(coords))
+label2D = torch.zeros([640, 480])
+label2D[3, 6] = 1
+label2D[2, 4] = 1
+
+
 # for i in range(4):
 #     x = round(coords[2 * i])
 #     y = round(coords[2 * i + 1])
 #     label2D[x, y] = 1
-# print ((label2D == 1).nonzero(as_tuple=True)[1])
-label2D = torch.zeros([3, 2, 5])
-label2D[:, :, 0] = 1
-print(label2D)
+# print((label2D != 0).nonzero(as_tuple=True))
+# label2D = torch.zeros([3, 2, 5])
+# label2D[:, :, 0] = 1
+# print(label2D)
+
+print(640//8)

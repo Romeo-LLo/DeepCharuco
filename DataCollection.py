@@ -5,8 +5,8 @@ import xlwt
 import os
 import csv
 def aruco_detection(writer, count):
-    mtx = np.load('./camera_parameters.npy', allow_pickle=True)[()]['mtx']
-    dist = np.load('./camera_parameters.npy', allow_pickle=True)[()]['dist']
+    # mtx = np.load('./camera_parameters.npy', allow_pickle=True)[()]['mtx']
+    # dist = np.load('./camera_parameters.npy', allow_pickle=True)[()]['dist']
 
     aruco_dict = aruco.Dictionary_get(aruco.DICT_4X4_50)
     squareLength = 1.67
@@ -24,14 +24,14 @@ def aruco_detection(writer, count):
                                                                         squareLength / markerLength)
                 if len(diamondCorners) >= 1:
                     count += 1
-                    print(diamondIds)
-                    img_fn = '{}.jpg'.format(str(count))
+                    img_fn = '{:04d}.jpg'.format(count)
                     gray_image = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     cv2.imwrite(os.path.join('TrainImage/', img_fn), gray_image)
                     writer.writerow([img_fn, diamondCorners[0][0][0][0], diamondCorners[0][0][0][1],
                                      diamondCorners[0][1][0][0], diamondCorners[0][1][0][1],
                                      diamondCorners[0][2][0][0], diamondCorners[0][2][0][1],
                                      diamondCorners[0][3][0][0], diamondCorners[0][3][0][1]])
+                    print(img_fn, ' recorded.')
 
             # rvec, tvec, _ = aruco.estimatePoseSingleMarkers(corners, markerLength, mtx, dist)
             # frame = aruco.drawAxis(frame, mtx, dist, rvec, tvec, 1)
@@ -49,7 +49,7 @@ def aruco_detection(writer, count):
 
 def normal_detection():
 
-    csvFile = r'C:/Users/HP/Desktop/output.csv'
+    csvFile = './output.csv'
     if os.path.isfile(csvFile):
         with open(csvFile, 'r') as file:
             data = file.readlines()
