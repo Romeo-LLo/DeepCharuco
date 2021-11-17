@@ -26,7 +26,8 @@ def aruco_detection(writer, count):
                     count += 1
                     print(diamondIds)
                     img_fn = '{}.jpg'.format(str(count))
-                    cv2.imwrite(os.path.join('TrainImage/', img_fn), frame)
+                    gray_image = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                    cv2.imwrite(os.path.join('TrainImage/', img_fn), gray_image)
                     writer.writerow([img_fn, diamondCorners[0][0][0][0], diamondCorners[0][0][0][1],
                                      diamondCorners[0][1][0][0], diamondCorners[0][1][0][1],
                                      diamondCorners[0][2][0][0], diamondCorners[0][2][0][1],

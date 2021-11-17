@@ -13,7 +13,6 @@ from PIL import Image, ImageOps
 import matplotlib.pyplot as plt
 import torchvision.models as models
 import pandas as pd
-import tqdm
 
 #
 img = Image.open('TrainImage/1.jpg')

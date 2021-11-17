@@ -13,7 +13,6 @@ from PIL import Image, ImageOps
 import matplotlib.pyplot as plt
 import torchvision.models as models
 import pandas as pd
-import tqdm
 import cv2
 
 class CustomDataset(Dataset):
@@ -37,26 +36,30 @@ class CustomDataset(Dataset):
 
 
         if self.transform is not None:
+            img = self.transform(img)
             imgGray = self.transform(imgGray)
             # label2D =self.transform(label2D)  # already torch
             # id2D =self.transform(id2D)
 
-        return imgGray, label2D, id2D
+        return img, imgGray, label2D, id2D
 
     def coord2binary(self, coords, img_size):
         label2D = torch.zeros([img_size[1], img_size[0]])
         for i in range(4):
             x = round(coords[2*i])
             y = round(coords[2*i+1])
-            label2D[x, y] = 1
+            label2D[y, x] = 1
         return label2D
 
     def idto2D(self, coords, img_size):
         id2D = torch.zeros([img_size[1]//8, img_size[0]//8])  # 0 stands for no id
+        y_interval = img_size[1] / 8
+        x_interval = img_size[0] / 8
+
         for i in range(4):
-            x = round(coords[2*i]) // 8
-            y = round(coords[2*i+1]) // 8
-            id2D[x, y] = i+1
+            x = round(coords[2*i]) // x_interval
+            y = round(coords[2*i+1]) // y_interval
+            id2D[y, x] = i+1
         return id2D
 
 
@@ -67,6 +70,21 @@ def imshow(img):
     print(img.shape)
     plt.imshow(np.transpose(img, (1, 2, 0)))
     plt.show()
+def imgValid(img ,coords, id):
+
+    showimg = img.numpy()
+    for h in range(60):
+        for w in range(80):
+            index = id[0, h, w]
+
+            if index != 0:
+                y = h * 8 + 4
+                x = w * 8 + 4
+                plt.text(x, y, str(int(index.item())), fontsize=20, bbox=dict(facecolor="r"))
+
+    plt.imshow(np.transpose(showimg.squeeze(0), (1, 2, 0)))
+    plt.show()
+
 
 def labels2Dto3D_flattened(labels, cell_size):
 
@@ -271,7 +289,7 @@ def test():
     model = DeepCharuco()
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.01, betas=(0.9, 0.999))
-    checkpoint = torch.load('Model_dict/1st_version.pth')
+    checkpoint = torch.load('Model_dict/1st_version.pth', map_location=torch.device('cpu'))
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     model.eval()
@@ -281,11 +299,29 @@ def test():
     #
     # while (True):
     #     ret, frame = cap.read()
-    #     frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).to(device)
-    #     out_loc = model(frame_gray)['semi']
-    #     out_id = model(frame_gray)['desc']
     #
-    #     pred_loc = torch.max(out_loc, dim=1)
+    #     imgGray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    #     transform = transforms.ToTensor()
+    #     imgGray = transform(imgGray).unsqueeze(0).to(device)
+    #
+    #     out_loc = model(imgGray)['semi']
+    #     out_id = model(imgGray)['desc']
+    #
+    #     pred_loc = torch.argmax(out_loc, dim=1)
+    #     pred_id = torch.max(out_id, dim=1)[1].cpu().numpy()
+    #     for h in range(60):
+    #         for w in range(80):
+    #
+    #             y = h * 8
+    #             x = w * 8
+    #             index = pred_id[0, h, w]
+    #             if index != 0:
+    #                 frame = cv2.putText(frame, str(index), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 1,
+    #                                       cv2.LINE_AA)
+    #
+    #     cv2.imshow('id img', frame)
+
+
 
     showimg = cv2.imread('TrainImage/2.jpg')
 
@@ -301,10 +337,12 @@ def test():
     pred_id = torch.max(out_id, dim=1)[1].cpu().numpy()
     for h in range(60):
         for w in range(80):
+
             y = h * 8
             x = w * 8
             index = pred_id[0, h, w]
-            showimg = cv2.putText(showimg, str(index), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 1, cv2.LINE_AA)
+            if index != 0:
+                showimg = cv2.putText(showimg, str(index), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 1, cv2.LINE_AA)
 
     cv2.imshow('id img', showimg)
 
@@ -319,8 +357,11 @@ def test():
 
 if __name__ == "__main__":
     trainset = CustomDataset(root='TrainImage/', transform=transforms.ToTensor())
-    trainset_loader = DataLoader(trainset, batch_size=16, shuffle=True, num_workers=1)
-    imgs, coords, id = iter(trainset_loader).next()
+    trainset_loader = DataLoader(trainset, batch_size=1, shuffle=True, num_workers=1)
+    img, gimg, coords, id = iter(trainset_loader).next()
+    print ((id != 0).nonzero(as_tuple=True))
+
+    imgValid(img, coords, id)
     # # imshow(torchvision.utils.make_grid(imgs, nrow=4))
     # train()
-    test()
+    # test()
