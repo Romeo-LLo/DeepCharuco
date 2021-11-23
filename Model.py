@@ -81,7 +81,7 @@ class DeepCharuco(nn.Module):
             # Detector Head.
             cPa = self.relu(self.bnPa(self.convPa(x)))
             semi = self.bnPb(self.convPb(cPa))
-            # Descriptor Head.
+            # ID Head.
             cDa = self.relu(self.bnDa(self.convDa(x)))
             desc = self.bnDb(self.convDb(cDa))
         else:
