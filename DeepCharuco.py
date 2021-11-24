@@ -16,12 +16,13 @@ import pandas as pd
 import cv2
 from Model import DeepCharuco
 
+
 class CustomDataset(Dataset):
     def __init__(self, root, transform=None):
         self.root = root
         self.transform = transform
         self.csv = pd.read_csv('output.csv')
-        self.sample_num = self.csv.shape[0]       # 以csv的數量為主，照片可能會比較多
+        self.sample_num = self.csv.shape[0]  # 以csv的數量為主，照片可能會比較多
         files = glob.glob(os.path.join(root, '*.jpg'))
         files.sort()
         self.files = files[:self.sample_num]
@@ -33,7 +34,7 @@ class CustomDataset(Dataset):
         self.width = img.size[0]
         self.height = img.size[1]
         self.x_cells = int(self.width / self.cell_size)
-        self.y_cells = int(self.height  / self.cell_size)
+        self.y_cells = int(self.height / self.cell_size)
 
     def __getitem__(self, index):
         img_fn = self.files[index]
@@ -50,8 +51,8 @@ class CustomDataset(Dataset):
     def coord2binary(self, coords):
         label2D = torch.zeros(self.height, self.width)  # 480*640
         for i in range(4):
-            y = round(coords[2*i+1])
-            x = round(coords[2*i])
+            y = round(coords[2 * i + 1])
+            x = round(coords[2 * i])
             label2D[y, x] = 1
         return label2D
 
@@ -59,14 +60,14 @@ class CustomDataset(Dataset):
 
         id2D = torch.zeros(self.y_cells, self.x_cells)  # 0 stands for no id
         for i in range(4):
-            x = round(coords[2*i] // self.cell_size)
-            y = round(coords[2*i+1] // self.cell_size)
+            x = round(coords[2 * i] // self.cell_size)
+            y = round(coords[2 * i + 1] // self.cell_size)
             id2D[y, x] = i + 1
         return id2D
 
-
     def __len__(self):
         return self.len
+
 
 def imshow(img):
     img = img.numpy()
@@ -74,12 +75,13 @@ def imshow(img):
     plt.imshow(np.transpose(img, (1, 2, 0)))
     plt.show()
 
+
 def imgValid(img, id2D):
     id = id2D[0]
     showimg = img.numpy()
     for h in range(60):
         for w in range(80):
-            index = id[h, w]   # 0 is the first item of the batch
+            index = id[h, w]  # 0 is the first item of the batch
 
             if index != 0:
                 y = h * 8 + 4
@@ -90,8 +92,8 @@ def imgValid(img, id2D):
     plt.imshow(np.transpose(showimg.squeeze(0), (1, 2, 0)), cmap='gray')
     plt.show()
 
-def labels2Dto3D_flattened(labels, cell_size):
 
+def labels2Dto3D_flattened(labels, cell_size):
     batch_size, channel, H, W = labels.shape
     Hc, Wc = H // cell_size, W // cell_size
     space2depth = SpaceToDepth(8)
@@ -103,11 +105,12 @@ def labels2Dto3D_flattened(labels, cell_size):
     labels = torch.argmax(labels, dim=1)
     return labels
 
+
 class SpaceToDepth(nn.Module):
     def __init__(self, block_size):
         super(SpaceToDepth, self).__init__()
         self.block_size = block_size
-        self.block_size_sq = block_size*block_size
+        self.block_size_sq = block_size * block_size
 
     def forward(self, input):
         output = input.permute(0, 2, 3, 1)
@@ -130,25 +133,25 @@ def save_checkpoint(checkpoint_path, model, optimizer):
     }, checkpoint_path)
     print("Model saved")
 
+
 def train(trainset_loader):
-    epoch = 200
-    beta = 0.8
+    epoch = 500
+    beta = 0.85
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = DeepCharuco()
     model = model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=0.001, betas=(0.5, 0.999))
-
+    optimizer = optim.Adam(model.parameters(), lr=0.01, betas=(0.5, 0.999))
 
     lambda2 = lambda epoch: 0.98 ** epoch
     scheduler = LambdaLR(optimizer, lr_lambda=lambda2)
     criterion = nn.CrossEntropyLoss()
 
-    checkpoint = torch.load('Model_dict/epoch40.pth', map_location=torch.device('cpu'))
-
-    model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    # checkpoint = torch.load('Model_dict/epoch40.pth', map_location=torch.device('cpu'))
+    #
+    # model.load_state_dict(checkpoint['model_state_dict'])
+    # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
     model.train()
     interval = 20
@@ -172,12 +175,13 @@ def train(trainset_loader):
             optimizer.step()
             if iteration % interval == 0:
                 print("Train epoch {}  [{}/{}] {:.0f}%]\tLoss: {:.6f}".format(
-                    ep, batch_id*len(target_label2D), len(trainset_loader.dataset),
-                    100 * batch_id / len(trainset_loader), loss.item()))
+                    ep, batch_id * len(target_label2D), len(trainset_loader.dataset),
+                        100 * batch_id / len(trainset_loader), loss.item()))
             iteration += 1
         scheduler.step()
-        if (ep+1) % 20 == 0:
-            save_checkpoint('Model_dict/epoch{}.pth'.format(ep+1+40), model, optimizer)
+        if (ep + 1) % 20 == 0:
+            save_checkpoint('Model_dict/epoch{}.pth'.format(ep + 1), model, optimizer)
+
 
 def test():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -190,7 +194,6 @@ def test():
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     model.eval()
-
 
     # cap = cv2.VideoCapture(0)
     #
@@ -217,8 +220,6 @@ def test():
     #                                       cv2.LINE_AA)
     #
     #     cv2.imshow('id img', frame)
-
-
 
     filename = 'TrainImage/0006.jpg'
     img = Image.open(filename)
@@ -252,10 +253,14 @@ def test():
 
 
 if __name__ == "__main__":
-    trainset = CustomDataset(root='TrainImage', transform=transforms.ToTensor())
+    tfm = transforms.Compose([
+                transforms.GaussianBlur(3, sigma=(0.1, 2.0)),
+                transforms.ColorJitter(brightness=(0.3, 0.5), contrast=0, saturation=0, hue=0),
+                transforms.ToTensor(),
+    ])
+    trainset = CustomDataset(root='TrainImage', transform=tfm)
     trainset_loader = DataLoader(trainset, batch_size=16, shuffle=True, num_workers=1)
     # img, label2D, id2D = iter(trainset_loader).next()
     # imgValid(img, id2D)
     train(trainset_loader)
     # test()
-

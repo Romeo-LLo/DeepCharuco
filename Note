@@ -3,3 +3,11 @@ training process is not rectified
 loss stock as 0.68
 using less epoch model can at least give out id point, strange
 more data might work
+
+
+1123
+location sometimes get more than 4
+id sometimes duplicate or less that 4
+
+
+# print((label2D != 0).nonzero(as_tuple=True)) to replace double for loop

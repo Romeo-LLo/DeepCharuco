@@ -141,7 +141,7 @@ def test_show():
     model = DeepCharuco()
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.01, betas=(0.5, 0.999))
-    checkpoint = torch.load('Model_dict/epoch40.pth', map_location=torch.device('cpu'))
+    checkpoint = torch.load('Model_dict/epoch60.pth', map_location=torch.device('cpu'))
 
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -172,7 +172,7 @@ def test_show():
     #                                       cv2.LINE_AA)
     #
     #     cv2.imshow('id img', frame)
-    for i in range(1):
+    for i in range(10):
         id = random.randint(1, 300)
 
         filename = 'TestImage/{:04d}.jpg'.format(id)
@@ -196,25 +196,40 @@ def test_show():
         ax.imshow(np.transpose(showimg.squeeze(0), (1, 2, 0)), cmap='gray')
         cms = matplotlib.cm
 
-        c = 0
+        # show all discovered
+        # c = 0
+        # for h in range(60):
+        #     for w in range(80):
+        #         x = w * 8
+        #         y = h * 8
+        #         loc = pred_loc[0, h, w].item()
+        #         if loc != 64:
+        #             x_ = loc % 8 + x
+        #             y_ = loc // 8 + y
+        #             circ = plt.Circle((x_, y_), 3, fill=True, color=cms.jet(0.9))
+        #             ax.add_patch(circ)
+        #
+        #         index = pred_id[0, h, w]
+        #         if index != 0:
+        #             c += 1
+        #             print(index)
+        #             plt.text(x, y, str(int(index.item())), fontsize=15, color="yellow")
+        id_list = [1, 2, 3, 4]
         for h in range(60):
             for w in range(80):
                 x = w * 8
                 y = h * 8
+                index = pred_id[0, h, w]
+                if index in id_list:
+                    id_list.remove(index)
+                    plt.text(x, y, str(int(index.item())), fontsize=15, color="yellow")
+
                 loc = pred_loc[0, h, w].item()
                 if loc != 64:
                     x_ = loc % 8 + x
                     y_ = loc // 8 + y
-
                     circ = plt.Circle((x_, y_), 3, fill=True, color=cms.jet(0.9))
                     ax.add_patch(circ)
-
-                index = pred_id[0, h, w]
-                if index != 0:
-                    c += 1
-                    print(index)
-                    # plt.text(x, y, str(int(index.item())), fontsize=5, bbox=dict(facecolor="r"))
-                    # ax.add_patch(text)
 
         plt.show()
 
