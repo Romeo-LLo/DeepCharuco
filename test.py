@@ -142,50 +142,22 @@ def SetupTrain():
 
 
 
-def test_show(model_dir):
-    testset = CustomDataset(root='TestImage', transform=transforms.ToTensor())
+def test_show(model_dir, test_dir):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = DeepCharuco()
     model = model.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=0.01, betas=(0.5, 0.999))
     checkpoint = torch.load(model_dir, map_location=torch.device('cpu'))
 
     model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     model.eval()
 
-    # cap = cv2.VideoCapture(0)
-    #
-    # while (True):
-    #     ret, frame = cap.read()
-    #
-    #     imgGray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    #     transform = transforms.ToTensor()
-    #     imgGray = transform(imgGray).unsqueeze(0).to(device)
-    #
-    #     out_loc = model(imgGray)['semi']
-    #     out_id = model(imgGray)['desc']
-    #
-    #     pred_loc = torch.argmax(out_loc, dim=1)
-    #     pred_id = torch.max(out_id, dim=1)[1].cpu().numpy()
-    #     for h in range(60):
-    #         for w in range(80):
-    #
-    #             y = h * 8
-    #             x = w * 8
-    #             index = pred_id[0, h, w]
-    #             if index != 0:
-    #                 frame = cv2.putText(frame, str(index), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 1,
-    #                                       cv2.LINE_AA)
-    #
-    #     cv2.imshow('id img', frame)
+    csv = pd.read_csv('output.csv')
 
-    csv = pd.read_csv('test_output.csv')
+    for i in range(1):
+        id = random.randint(1, 1)
+        filename = os.path.join(test_dir, '{:04d}.jpg'.format(id))
 
-    for i in range(10):
-        id = random.randint(1, 7000)
-        filename = 'TrainImage/{:04d}.jpg'.format(id)
         coords = csv.iloc[i, 1:]
         target_id = idto2D(coords).unsqueeze(0).to(device)
 
@@ -202,8 +174,9 @@ def test_show(model_dir):
         id_loss = criterion(out_id, target_id.type(torch.int64))
 
         print("id_loss = {:.4f}".format(id_loss))
-        pred_loc = torch.argmax(out_loc, dim=1)
+        pred_loc = torch.argmax(out_loc, dim=1).cpu()
         pred_id = torch.max(out_id, dim=1)[1].cpu().numpy()
+
         showimg = Image.open(filename)
         showimg = transform(showimg).unsqueeze(0)
         showimg = showimg.numpy()
@@ -213,23 +186,39 @@ def test_show(model_dir):
         ax.imshow(np.transpose(showimg.squeeze(0), (1, 2, 0)), cmap='gray')
         cms = matplotlib.cm
 
-        # show all discovered
-        c = 0
-        for h in range(60):
-            for w in range(80):
-                x = w * 8
-                y = h * 8
-                loc = pred_loc[0, h, w].item()
-                if loc != 64:
-                    x_ = loc % 8 + x
-                    y_ = loc // 8 + y
-                    circ = plt.Circle((x_, y_), 3, fill=True, color=cms.jet(0.9))
-                    ax.add_patch(circ)
+        _, cell_loc_y, cell_loc_x = (pred_loc != 64).nonzero(as_tuple=True)
+        spec_y = [pred_loc[0, y, x] // 8 for y, x in zip(cell_loc_y, cell_loc_x)]
+        spec_x = [pred_loc[0, y, x] % 8 for y, x in zip(cell_loc_y, cell_loc_x)]
+        loc_y = cell_loc_y * 8
+        loc_x = cell_loc_x * 8
 
-                index = pred_id[0, h, w]
-                if index != 0:
-                    c += 1
-                    plt.text(x, y, str(int(index.item())), fontsize=15, color="yellow")
+        y = loc_y.numpy() + np.array(spec_y)
+        x = loc_x.numpy() + np.array(spec_x)
+        id = [pred_id[0, y, x] for y, x in zip(cell_loc_y, cell_loc_x)]
+
+        for i in range(len(id)):
+            x_, y_, index = x[i], y[i], id[i]
+            circ = plt.Circle((x_, y_), 3, fill=True, color=cms.jet(0.9))
+            ax.add_patch(circ)
+
+
+        # ## show all discovered
+        # c = 0
+        # for h in range(60):
+        #     for w in range(80):
+        #         x = w * 8
+        #         y = h * 8
+        #         loc = pred_loc[0, h, w].item()
+        #         if loc != 64:
+        #             x_ = loc % 8 + x
+        #             y_ = loc // 8 + y
+        #             circ = plt.Circle((x_, y_), 3, fill=True, color=cms.jet(0.9))
+        #             ax.add_patch(circ)
+        #
+        #         index = pred_id[0, h, w]
+        #         if index != 0:
+        #             c += 1
+        #             plt.text(x, y, str(int(index.item())), fontsize=15, color="yellow")
         # id_list = [1, 2, 3, 4]
         # for h in range(60):
         #     for w in range(80):
@@ -272,7 +261,62 @@ def test_loc_loss():
 
         target_loc = labels2Dto3D_flattened(target_label2D.unsqueeze(1), 8)
 
+
+def test_stream():
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = DeepCharuco()
+    model = model.to(device)
+    checkpoint = torch.load(model_dir, map_location=torch.device('cpu'))
+
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.eval()
+
+
+    cap = cv2.VideoCapture(0)
+
+    while (True):
+        ret, frame = cap.read()
+        if ret:
+
+            imgGray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            transform = transforms.ToTensor()
+            imgGray = transform(imgGray).unsqueeze(0).to(device)
+
+            out_loc = model(imgGray)['semi']
+            out_id = model(imgGray)['desc']
+            pred_loc = torch.argmax(out_loc, dim=1).cpu()
+            pred_id = torch.max(out_id, dim=1)[1].cpu().numpy()
+
+            _, cell_loc_y, cell_loc_x = (pred_loc != 64).nonzero(as_tuple=True)
+            spec_y = [pred_loc[0, y, x] // 8 for y, x in zip(cell_loc_y, cell_loc_x)]
+            spec_x = [pred_loc[0, y, x] % 8 for y, x in zip(cell_loc_y, cell_loc_x)]
+            loc_y = cell_loc_y * 8
+            loc_x = cell_loc_x * 8
+
+            y = loc_y.numpy() + np.array(spec_y)
+            x = loc_x.numpy() + np.array(spec_x)
+            id = [pred_id[0, y, x] for y, x in zip(cell_loc_y, cell_loc_x)]
+
+            for i in range(len(id)):
+                x_, y_, index = x[i], y[i], id[i]
+                cv2.circle(frame, (x_, y_), 3, (255, 0, 0), -1)
+                cv2.putText(frame, str(index),cv2.FONT_HERSHEY_PLAIN, 1, (0, 255, 255), 1, cv2.LINE_AA)
+
+
+            pressedKey = cv2.waitKey(1) & 0xFF
+            if pressedKey == ord('q'):
+                break
+            cv2.imshow("Image", frame)
+
+        else:
+            break
+    cap.release()
+    cv2.destroyAllWindows()
+
+
 if __name__ == "__main__":
     model_dir = 'Model_dict/epoch100.pth'
-    test_show(model_dir)
+    test_dir = 'TrainImage'
+    test_show(model_dir, test_dir)
 
