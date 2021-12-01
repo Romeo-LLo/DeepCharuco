@@ -104,8 +104,8 @@ class DeepCharuco(nn.Module):
             cDa = self.bnDa(self.relu(self.convDa(x)))
             desc = self.bnDb(self.convDb(cDa))
 
-        dn = torch.norm(desc, p=2, dim=1)  # Compute the norm.
-        desc = desc.div(torch.unsqueeze(dn, 1))  # Divide by norm to normalize.
+        # dn = torch.norm(desc, p=2, dim=1)  # Compute the norm.
+        # desc = desc.div(torch.unsqueeze(dn, 1))  # Divide by norm to normalize.
         output = {'semi': semi, 'desc': desc}
 
         return output

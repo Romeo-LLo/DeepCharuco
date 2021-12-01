@@ -135,8 +135,8 @@ def save_checkpoint(checkpoint_path, model, optimizer):
 
 
 def train(trainset_loader):
-    epoch = 500
-    beta = 0.85
+    epoch = 100
+    beta = 0.8
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = DeepCharuco()
@@ -144,17 +144,16 @@ def train(trainset_loader):
 
     optimizer = optim.Adam(model.parameters(), lr=0.01, betas=(0.5, 0.999))
 
-    lambda2 = lambda epoch: 0.98 ** epoch
+    lambda2 = lambda epoch: 0.8 ** epoch
     scheduler = LambdaLR(optimizer, lr_lambda=lambda2)
     criterion = nn.CrossEntropyLoss()
 
     # checkpoint = torch.load('Model_dict/epoch40.pth', map_location=torch.device('cpu'))
-    #
     # model.load_state_dict(checkpoint['model_state_dict'])
     # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
     model.train()
-    interval = 20
+    interval = 80
     loc_loss = 0
     id_loss = 0
     for ep in range(epoch):
@@ -167,18 +166,19 @@ def train(trainset_loader):
 
             target_loc = labels2Dto3D_flattened(target_label2D.unsqueeze(1), 8)
             loc_loss = criterion(pred_loc, target_loc.type(torch.int64))
-
             id_loss = criterion(pred_id, target_id.type(torch.int64))
 
             loss = loc_loss + beta * id_loss
             loss.backward()
             optimizer.step()
             if iteration % interval == 0:
-                print("Train epoch {}  [{}/{}] {:.0f}%]\tLoss: {:.6f}".format(
+                print("Train epoch {}  [{:<4}/{}] [{:.0f}%]\tLoss: {:.6f}\tloc_loss: {:.6f}\tid_loss: {:.6f} ".format(
                     ep, batch_id * len(target_label2D), len(trainset_loader.dataset),
-                        100 * batch_id / len(trainset_loader), loss.item()))
+                        100 * batch_id / len(trainset_loader), loss.item(), loc_loss.item(), id_loss.item()))
             iteration += 1
         scheduler.step()
+        save_checkpoint('Model_dict/current.pth', model, optimizer)
+
         if (ep + 1) % 20 == 0:
             save_checkpoint('Model_dict/epoch{}.pth'.format(ep + 1), model, optimizer)
 
@@ -245,7 +245,6 @@ def test():
             index = pred_id[0, h, w]
             if index != 0:
                 c += 1
-                print(index)
                 plt.text(x, y, str(int(index.item())), fontsize=5, bbox=dict(facecolor="r"))
 
     plt.imshow(np.transpose(showimg.squeeze(0), (1, 2, 0)), cmap='gray')
@@ -254,8 +253,8 @@ def test():
 
 if __name__ == "__main__":
     tfm = transforms.Compose([
-                transforms.GaussianBlur(3, sigma=(0.1, 2.0)),
-                transforms.ColorJitter(brightness=(0.3, 0.5), contrast=0, saturation=0, hue=0),
+                # transforms.GaussianBlur(3, sigma=(0.1, 2.0)),
+                # transforms.ColorJitter(brightness=(0.3, 0.5), contrast=0, saturation=0, hue=0),
                 transforms.ToTensor(),
     ])
     trainset = CustomDataset(root='TrainImage', transform=tfm)

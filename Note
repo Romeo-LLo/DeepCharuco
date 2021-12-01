@@ -10,4 +10,22 @@ location sometimes get more than 4
 id sometimes duplicate or less that 4
 
 
+1130
+set beta = 0.5, model_dict: loss43.pth
+Loss: 0.425945	loc_loss: 0.007354	id_loss: 0.837182
+
+set beta = 2 no use
+place beta before loc loss, train only id head, id loss stuck at 0.83
+try increasing data from 3700 to 7500
+no use, still stuck at 0.837
+
+test.show put on id loss, it seems the right prediction has no difference on loss
+with wrong prediction, all are 0.83
+note that in training process, the value after criterion is divided by batch size already
+
+In model.py, desc head has two extra operation, which is not need,
+shut them down, things goes better afterward, beta is set to id loss now
+
+
+## TODO:
 # print((label2D != 0).nonzero(as_tuple=True)) to replace double for loop
